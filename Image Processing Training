@@ -1,0 +1,30 @@
+from ultralytics import YOLO
+from roboflow import Roboflow
+
+def main():
+    # --- 1. DOWNLOAD YOUR DATA ---
+    print("Downloading dataset from Roboflow...")
+    rf = Roboflow(api_key="VOO3uO7bEz195fFF3ACq")
+    project = rf.workspace("emir-parlar-13fte").project("teddy-bear-detection-v0lcw")
+    version = project.version(2)
+    dataset = version.download("yolov11")
+
+    # --- 2. SETUP THE MODEL ---
+    # We load "yolo11n.pt" (Nano version) -> Fastest for testing
+    print("Loading YOLOv11 model...")
+    model = YOLO("yolo11n.pt") 
+
+    # --- 3. START TRAINING ---
+    print("Starting training... (This might take 5-15 minutes)")
+    results = model.train(
+        data=f"{dataset.location}/data.yaml", # Automatically finds your downloaded data
+        epochs=50,       # 50 loops through the data
+        imgsz=640,       # Standard image size
+        batch=8,         # Process 8 images at a time (safe for most computers)
+        name='teddy_bear_result' # The folder where your final brain will be saved
+    )
+    
+    print("Training finished! Your model is saved in 'runs/detect/teddy_bear_result/weights/'")
+
+if __name__ == '__main__':
+    main()
