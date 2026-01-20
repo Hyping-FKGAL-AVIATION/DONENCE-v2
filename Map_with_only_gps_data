@@ -1,0 +1,123 @@
+import cv2
+import numpy as np
+import os
+import math
+
+# --- SETTINGS ---
+# Set to 0.5 if you run out of RAM (makes the map 2x smaller)
+
+# ---------------------------------------------------------
+# SETUP: User Data
+# ---------------------------------------------------------
+# Your list of positions (Lat, Long)
+# We only use the FIRST one for Phase 1 to set the origin.
+gps_data = [
+    (35.5611751, -97.6622667),  # 1st Photo (Origin)
+    (35.5611784, -97.6625094)   # 2nd Photo (Ignored for Phase 1)
+]
+
+source_folder = "Photos"
+#os.chdir(source_folder)
+# ---------------------------------------------------------
+# THE ALGORITHM: Phase 1
+# ---------------------------------------------------------
+
+# State Variables
+global_origin = None  # Will store (Lat, Lon) of the first photo
+canvas = None         # The map we are building
+
+print(f"--- Processing First Input: {source_folder} ---")
+    
+#Load Image
+img1 = cv2.imread(fr"{source_folder}/001.jpg")
+img2 = cv2.imread(fr"{source_folder}/002.jpg")
+
+if img1 is None:
+    print("Error: Could not load image. Check the path.")
+    exit()
+
+img_h, img_w, _ = img1.shape
+print(f"Image Loaded. Size: {img_w}x{img_h}")
+
+#Set Origin
+global_origin = (gps_data[0][0], gps_data[0][1])
+lat = global_origin[0]
+lon = global_origin[1]
+print(f"Global Origin Set: {lat,lon}")
+
+#Create Canvas
+canvas_size = (4000, 4000)
+canvas = np.zeros((canvas_size[0], canvas_size[1], 3), dtype=np.uint8)
+print(f"Canvas Created: {canvas_size}")
+canvas_h, canvas_w, _ = canvas.shape
+
+#Positions to place the first Photo in the center of the canvas
+center_y, center_x = canvas_size[0] // 2, canvas_size[1] // 2
+    
+start_y = center_y - (img_h // 2)
+start_x = center_x - (img_w // 2)
+end_y = start_y + img_h
+end_x = start_x + img_w
+
+#Place the First image onto the canvas
+canvas[start_y:end_y, start_x:end_x] = img1
+print("First photo placed at Center (0,0) of Canvas.")
+
+# 5. Show Result (Optional, shrinks it so it fits on screen)
+#cv2.imwrite("phase1_output.jpg", canvas)
+#print("Saved 'phase1_output.jpg' to disk.")
+
+# ---------------------------------------------------------
+# RUNNING THE MISSION
+# ---------------------------------------------------------
+# We only pass the FIRST data point because this is strictly Phase 1.
+
+print("\n--- Starting Phase 2: Positioning Image 2 ---")
+
+# 1. SETUP: Scale Factor
+# Adjusted slightly for your ~1880px width
+PIXELS_PER_METER = 18.3 
+
+# 2. HELPER: Calculate Distance in Meters
+lat1, lon1 = gps_data[0]
+lat2, lon2 = gps_data[1]
+
+meters_per_lat = 111139.0 
+meters_per_lon = 111139.0 * math.cos(math.radians(lat1))
+
+dy_meters = (lat2 - lat1) * meters_per_lat
+dx_meters = (lon2 - lon1) * meters_per_lon
+
+print(f"Shift Detected: {dx_meters:.2f}m East, {dy_meters:.2f}m North")
+
+# 3. CONVERT TO PIXELS
+dx_pixels = int(dx_meters * PIXELS_PER_METER)
+dy_pixels = int(dy_meters * PIXELS_PER_METER) * -1 
+
+print(f"Pixel Offset: x={dx_pixels}, y={dy_pixels}")
+
+# 4. LOAD IMAGE 2 & GET ITS *SPECIFIC* SIZE
+# This was the missing step causing the error
+h2, w2, _ = img2.shape 
+print(f"Image 2 Size: {w2}x{h2}")
+
+# 5. CALCULATE NEW POSITION
+# We use h2 and w2 (Image 2's size), NOT img_h/img_w (Image 1's size)
+start_x_2 = start_x + dx_pixels
+start_y_2 = start_y + dy_pixels
+end_x_2 = start_x_2 + w2
+end_y_2 = start_y_2 + h2
+
+# 6. PLACE IMAGE 2
+if (start_x_2 >= 0 and start_y_2 >= 0 and 
+    end_x_2 < canvas_size[1] and end_y_2 < canvas_size[0]):
+    
+    # Now the slice (start -> end) matches img2 exactly
+    canvas[start_y_2:end_y_2, start_x_2:end_x_2] = img2
+    print("Success: Image 2 placed on canvas.")
+else:
+    print("Error: Image 2 is out of bounds! Try increasing canvas size.")
+
+output_filename = "Phase2_Result.jpg"
+cv2.imwrite(output_filename, canvas)
+print(f"Done. Saved map as '{output_filename}'")
